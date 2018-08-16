@@ -7,6 +7,7 @@ from keras.optimizers import Adam
 from keras.layers import Input, Conv2D, UpSampling2D, Dropout, LeakyReLU, BatchNormalization, Activation
 from keras.layers.merge import Concatenate
 from keras.applications import VGG16
+from keras.applications import Xception
 from keras import backend as K
 from libs.pconv_layer import PConv2D
 from keras.utils import multi_gpu_model
@@ -29,12 +30,34 @@ class PConvUnet(object):
         
         # VGG layers to extract features from (first maxpooling layers, see pp. 7 of paper)
         self.vgg_layers = [3, 6, 10]
+        self.xception_layers = [14, 24, 34]
         
-        # Get the vgg16 model for perceptual loss        
-        self.vgg = self.build_vgg()
+        # Get the vgg16 model for perceptual loss
+        #self.vgg_origin = self.build_vgg()
+        self.vgg = self.build_xception()
         
         # Create UNet-like model
         self.model, self.parallel_model = self.build_pconv_unet()
+
+    def build_xception(self):
+        """
+        Load pre-trained Xception from keras applications
+        """
+        # Input image to extract features from
+        img = Input(shape=(self.img_rows, self.img_cols, 3))
+
+        # Get the vgg network from Keras applications
+        xception = Xception(weights="imagenet", include_top=False)
+
+        # Output the first three pooling layers
+        xception.outputs = [xception.layers[i].output for i in self.xception_layers]
+
+        # Create model and compile
+        model = Model(inputs=img, outputs=xception(img))
+        model.trainable = False
+        model.compile(loss='mse', optimizer='adam')
+
+        return model
         
     def build_vgg(self):
         """
@@ -216,8 +239,9 @@ class PConvUnet(object):
                 plot_callback(self.model)
 
             # Save logfile
-            print(self.current_weightfile())
-            self.save()
+            if self.weight_filepath:
+                print(self.current_weightfile())
+                self.save()
             
     def predict(self, sample):
         """Run prediction using this model"""
