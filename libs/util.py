@@ -23,9 +23,8 @@ def random_mask(height, width, channels=3):
     # Draw random ellipses
         for _ in range(1):
             x1, y1 = randint(1, width), randint(1, height)
-            s1, s2 = randint(15, size), randint(15, size)
+            s1, s2 = randint(20, size), randint(20, size)
             a1, a2, a3 = randint(0, 180), 0, 360
-            thickness = randint(3, 30)
             cv2.ellipse(img, (x1,y1), (s1,s2), a1, a2, a3,(1,1,1), -1)
     
     return 1-img
