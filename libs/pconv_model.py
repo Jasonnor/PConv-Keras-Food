@@ -9,6 +9,7 @@ from keras.layers.merge import Concatenate
 from keras.applications import VGG16
 from keras import backend as K
 from libs.pconv_layer import PConv2D
+from keras.utils import multi_gpu_model
 
 
 class PConvUnet(object):
@@ -33,7 +34,7 @@ class PConvUnet(object):
         self.vgg = self.build_vgg()
         
         # Create UNet-like model
-        self.model = self.build_pconv_unet()
+        self.model, self.parallel_model = self.build_pconv_unet()
         
     def build_vgg(self):
         """
@@ -106,14 +107,21 @@ class PConvUnet(object):
         
         # Setup the model inputs / outputs
         model = Model(inputs=[inputs_img, inputs_mask], outputs=outputs)
-
+        parallel_model = multi_gpu_model(model, gpus=2)
+        
         # Compile the model
-        model.compile(
+        parallel_model.compile(
             optimizer = Adam(lr=lr),
             loss=self.loss_total(inputs_mask)
         )
 
-        return model
+        # Compile the model
+        #model.compile(
+        #    optimizer = Adam(lr=lr),
+        #    loss=self.loss_total(inputs_mask)
+        #)
+
+        return model, parallel_model
     
     def loss_total(self, mask):
         """
@@ -193,7 +201,7 @@ class PConvUnet(object):
         for _ in range(epochs):            
             
             # Fit the model
-            self.model.fit_generator(
+            self.parallel_model.fit_generator(
                 generator,
                 epochs=self.current_epoch+1,
                 initial_epoch=self.current_epoch,
@@ -225,7 +233,7 @@ class PConvUnet(object):
     def load(self, filepath, train_bn=True, lr=0.0002):
 
         # Create UNet-like model
-        self.model = self.build_pconv_unet(train_bn, lr)
+        self.model, self.parallel_model = self.build_pconv_unet(train_bn, lr)
 
         # Load weights into model
         epoch = int(os.path.basename(filepath).split("_")[0])
