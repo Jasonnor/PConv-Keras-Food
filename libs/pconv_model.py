@@ -13,7 +13,7 @@ from libs.pconv_layer import PConv2D
 
 class PConvUnet(object):
 
-    def __init__(self, img_rows=512, img_cols=512, weight_filepath=None):
+    def __init__(self, img_rows=256, img_cols=256, weight_filepath=None):
         """Create the PConvUnet. If variable image size, set img_rows and img_cols to None"""
         
         # Settings
@@ -208,8 +208,8 @@ class PConvUnet(object):
                 plot_callback(self.model)
 
             # Save logfile
-            if self.weight_filepath:
-                self.save()
+            print(self.current_weightfile())
+            self.save()
             
     def predict(self, sample):
         """Run prediction using this model"""
