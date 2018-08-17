@@ -9,20 +9,20 @@ def random_mask(height, width, channels=3):
     img = np.zeros((height, width, channels), np.uint8)
 
     # Set size scale
-    size = int(100)
+    size = int(90)
     if width < 64 or height < 64:
         raise Exception("Width and Height of mask must be at least 64!")
         
     # Draw random circles
     if randint(0, 1) == 1:
         for _ in range(1):
-            x1, y1 = randint(1, width), randint(1, height)
+            x1, y1 = randint(15, width - 15), randint(15, height - 15)
             radius = randint(20, size)
             cv2.circle(img,(x1,y1),radius,(1,1,1), -1)
     else:
     # Draw random ellipses
         for _ in range(1):
-            x1, y1 = randint(1, width), randint(1, height)
+            x1, y1 = randint(15, width - 15), randint(15, height - 15)
             s1, s2 = randint(20, size), randint(20, size)
             a1, a2, a3 = randint(0, 180), 0, 360
             cv2.ellipse(img, (x1,y1), (s1,s2), a1, a2, a3,(1,1,1), -1)
