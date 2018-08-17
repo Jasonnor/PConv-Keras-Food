@@ -1,16 +1,16 @@
 import os
-import numpy as np
 from datetime import datetime
+
 from keras.models import Model
+from keras.models import load_model
 from keras.optimizers import Adam
-from keras.layers import Input, Conv2D, UpSampling2D, LeakyReLU, BatchNormalization, Activation, \
-    AveragePooling2D, Dropout
+from keras.layers import Input, Conv2D, UpSampling2D, Dropout, LeakyReLU, BatchNormalization, Activation
 from keras.layers.merge import Concatenate
 from keras.applications import VGG16
 from keras.applications import Xception
-from keras.utils import multi_gpu_model
 from keras import backend as K
-from libs.pconv_layer import PConv2D, BilinearUpsampling
+from libs.pconv_layer import PConv2D
+from keras.utils import multi_gpu_model
 
 
 class PConvUnet(object):
@@ -80,78 +80,6 @@ class PConvUnet(object):
         model.compile(loss='mse', optimizer='adam')
         
         return model
-
-    def build_pconv_deeplab(self, train_bn=True, lr=0.0002):
-
-        # INPUTS
-        OS = 16
-        atrous_rates = (6, 12, 18)
-        input_shapes = (self.img_rows, self.img_cols, 3)
-        inputs_img = Input(input_shapes)
-        inputs_mask = Input(input_shapes)
-
-        # DeepLab Encoder
-        def SepPConv(img_in, mask_in, filters, kernel_size, bn=True):
-            conv, mask = PConv2D(filters, kernel_size, strides=2, padding='same')([img_in, mask_in])
-            if bn:
-                conv = BatchNormalization(name='EncBN'+str(SepPConv.counter))(conv, training=train_bn)
-            conv = Activation('relu')(conv)
-            SepPConv.counter += 1
-            return conv, mask
-        SepPConv.counter = 0
-
-        # Conv 1x1
-        b0 = Conv2D(256, (1, 1), padding='same', use_bias=False, name='aspp0')(inputs_img)
-        b0 = BatchNormalization(name='aspp0_BN', epsilon=1e-5)(b0)
-        b0 = Activation('relu', name='aspp0_activation')(b0)
-        # rate = 6 (12)
-        b1 = SepPConv(inputs_img, inputs_mask, 256, 3)
-        # rate = 12 (24)
-        b2 = SepPConv(inputs_img, inputs_mask, 256, 3)
-        # rate = 18 (36)
-        b3 = SepPConv(inputs_img, inputs_mask, 256, 3)
-        # Image Pooling
-        # out_shape = int(np.ceil(input_shape[0] / OS))
-        b4 = AveragePooling2D(pool_size=(int(np.ceil(input_shapes[0] / OS)), int(np.ceil(input_shapes[1] / OS))))(inputs_img)
-        b4 = Conv2D(256, (1, 1), padding='same',
-                    use_bias=False, name='image_pooling')(b4)
-        b4 = BatchNormalization(name='image_pooling_BN', epsilon=1e-5)(b4)
-        b4 = Activation('relu')(b4)
-        b4 = BilinearUpsampling((int(np.ceil(input_shapes[0] / OS)), int(np.ceil(input_shapes[1] / OS))))(b4)
-        # concatenate ASPP branches & project
-        encoder = Concatenate()([b4, b0, b1, b2, b3])
-        encoder = Conv2D(256, (1, 1), padding='same',
-                   use_bias=False, name='concat_projection')(encoder)
-        encoder = BatchNormalization(name='concat_projection_BN', epsilon=1e-5)(encoder)
-        encoder = Activation('relu')(encoder)
-        encoder = Dropout(0.1)(encoder)
-
-        # DeepLab Decoder
-        decoder = BilinearUpsampling(output_size=(int(np.ceil(input_shapes[0] / 4)),
-                                            int(np.ceil(input_shapes[1] / 4))))(encoder)
-        dec_skip1 = Conv2D(48, (1, 1), padding='same',
-                           use_bias=False, name='feature_projection0')(inputs_img)
-        dec_skip1 = BatchNormalization(
-            name='feature_projection0_BN', epsilon=1e-5)(dec_skip1)
-        dec_skip1 = Activation('relu')(dec_skip1)
-        b1 = SepPConv(inputs_img, inputs_mask, 256, 3)
-        decoder = Concatenate()([decoder, dec_skip1])
-        decoder = SepPConv(decoder, inputs_mask, 256, 3)
-        decoder = SepPConv(decoder, inputs_mask, 256, 3)
-
-        outputs = Conv2D(3, 1, activation = 'sigmoid')(decoder)
-
-        # Setup the model inputs / outputs
-        model = Model(inputs=[inputs_img, inputs_mask], outputs=outputs)
-        parallel_model = multi_gpu_model(model, gpus=2)
-
-        # Compile the model
-        parallel_model.compile(
-            optimizer = Adam(lr=lr),
-            loss=self.loss_total(inputs_mask)
-        )
-
-        return model, parallel_model
         
     def build_pconv_unet(self, train_bn=True, lr=0.0002):      
 
