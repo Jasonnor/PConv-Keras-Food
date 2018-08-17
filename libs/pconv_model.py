@@ -31,8 +31,8 @@ class PConvUnet(object):
         self.xception_layers = [14, 24, 34]
 
         # Get the vgg16 model for perceptual loss
-        # self.vgg_origin = self.build_vgg()
-        self.vgg = self.build_xception()
+        self.vgg = self.build_vgg()
+        # self.vgg = self.build_xception()
 
         # Create UNet-like model
         self.model, self.parallel_model = self.build_pconv_unet()
