@@ -1,62 +1,7 @@
 from keras.utils import conv_utils
 from keras import backend as K
-from keras.engine import Layer
 from keras.engine import InputSpec
 from keras.layers import Conv2D
-
-
-class BilinearUpsampling(Layer):
-    """Just a simple bilinear upsampling layer. Works only with TF.
-       Args:
-           upsampling: tuple of 2 numbers > 0. The upsampling ratio for h and w
-           output_size: used instead of upsampling arg if passed!
-    """
-
-    def __init__(self, upsampling=(2, 2), output_size=None, data_format=None, **kwargs):
-
-        super(BilinearUpsampling, self).__init__(**kwargs)
-
-        self.data_format = K.normalize_data_format(data_format)
-        self.input_spec = InputSpec(ndim=4)
-        if output_size:
-            self.output_size = conv_utils.normalize_tuple(
-                output_size, 2, 'output_size')
-            self.upsampling = None
-        else:
-            self.output_size = None
-            self.upsampling = conv_utils.normalize_tuple(
-                upsampling, 2, 'upsampling')
-
-    def compute_output_shape(self, input_shape):
-        if self.upsampling:
-            height = self.upsampling[0] * \
-                input_shape[1] if input_shape[1] is not None else None
-            width = self.upsampling[1] * \
-                input_shape[2] if input_shape[2] is not None else None
-        else:
-            height = self.output_size[0]
-            width = self.output_size[1]
-        return (input_shape[0],
-                height,
-                width,
-                input_shape[3])
-
-    def call(self, inputs):
-        if self.upsampling:
-            return K.tf.image.resize_bilinear(inputs, (inputs.shape[1] * self.upsampling[0],
-                                                       inputs.shape[2] * self.upsampling[1]),
-                                              align_corners=True)
-        else:
-            return K.tf.image.resize_bilinear(inputs, (self.output_size[0],
-                                                       self.output_size[1]),
-                                              align_corners=True)
-
-    def get_config(self):
-        config = {'upsampling': self.upsampling,
-                  'output_size': self.output_size,
-                  'data_format': self.data_format}
-        base_config = super(BilinearUpsampling, self).get_config()
-        return dict(list(base_config.items()) + list(config.items()))
 
 
 class PConv2D(Conv2D):
@@ -64,21 +9,21 @@ class PConv2D(Conv2D):
         super().__init__(*args, **kwargs)
         self.input_spec = [InputSpec(ndim=4), InputSpec(ndim=4)]
 
-    def build(self, input_shape):        
+    def build(self, input_shape):
         """Adapted from original _Conv() layer of Keras        
         param input_shape: list of dimensions for [img, mask]
         """
-        
+
         if self.data_format == 'channels_first':
             channel_axis = 1
         else:
             channel_axis = -1
-            
+
         if input_shape[0][channel_axis] is None:
             raise ValueError('The channel dimension of the inputs should be defined. Found `None`.')
-            
+
         self.input_dim = input_shape[0][channel_axis]
-        
+
         # Image kernel
         kernel_shape = self.kernel_size + (self.input_dim, self.filters)
         self.kernel = self.add_weight(shape=kernel_shape,
@@ -88,7 +33,7 @@ class PConv2D(Conv2D):
                                       constraint=self.kernel_constraint)
         # Mask kernel
         self.kernel_mask = K.ones(shape=self.kernel_size + (self.input_dim, self.filters))
-        
+
         if self.use_bias:
             self.bias = self.add_weight(shape=(self.filters,),
                                         initializer=self.bias_initializer,
@@ -106,51 +51,52 @@ class PConv2D(Conv2D):
         convolutions. For the mask itself, we apply convolutions with all weights
         set to 1.
         Subsequently, we set all mask values >0 to 1, and otherwise 0
-        ''' 
-        
+        '''
+
         # Both image and mask must be supplied
         if type(inputs) is not list or len(inputs) != 2:
-            raise Exception('PartialConvolution2D must be called on a list of two tensors [img, mask]. Instead got: ' + str(inputs))
-            
+            raise Exception(
+                'PartialConvolution2D must be called on a list of two tensors [img, mask]. Instead got: ' + str(inputs))
+
         # Create normalization. Slight change here compared to paper, using mean mask value instead of sum
-        normalization = K.mean(inputs[1], axis=[1,2], keepdims=True)
+        normalization = K.mean(inputs[1], axis=[1, 2], keepdims=True)
         normalization = K.repeat_elements(normalization, inputs[1].shape[1], axis=1)
         normalization = K.repeat_elements(normalization, inputs[1].shape[2], axis=2)
 
         # Apply convolutions to image
         img_output = K.conv2d(
-            (inputs[0]*inputs[1]) / normalization, self.kernel, 
+            (inputs[0] * inputs[1]) / normalization, self.kernel,
             strides=self.strides,
             padding=self.padding,
             data_format=self.data_format,
             dilation_rate=self.dilation_rate
         )
-        
+
         # Apply convolutions to mask
         mask_output = K.conv2d(
-            inputs[1], self.kernel_mask, 
+            inputs[1], self.kernel_mask,
             strides=self.strides,
-            padding=self.padding,            
+            padding=self.padding,
             data_format=self.data_format,
             dilation_rate=self.dilation_rate
         )
-        
+
         # Where something happened, set 1, otherwise 0        
         mask_output = K.cast(K.greater(mask_output, 0), 'float32')
-        
+
         # Apply bias only to the image (if chosen to do so)
         if self.use_bias:
             img_output = K.bias_add(
                 img_output,
                 self.bias,
                 data_format=self.data_format)
-                
+
         # Apply activations on the image
         if self.activation is not None:
             img_output = self.activation(img_output)
-            
+
         return [img_output, mask_output]
-    
+
     def compute_output_shape(self, input_shape):
         if self.data_format == 'channels_last':
             space = input_shape[0][1:-1]
